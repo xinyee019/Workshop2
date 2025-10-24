@@ -18,7 +18,7 @@ public class CollectableItem : MonoBehaviour
 
     // Private field with public property
     private bool isCollected = false;
-    public bool IsCollected => isCollected; // Add this public read-only property
+    public bool IsCollected => isCollected;
 
     void Start()
     {
@@ -64,7 +64,7 @@ public class CollectableItem : MonoBehaviour
 
     void OnTriggerExit(Collider other)
     {
-        if (other.CompareTag("Player") && !isCollected)
+        if (other.CompareTag("Player"))
         {
             isPlayerInRange = false;
             HighlightObject(false);
@@ -96,7 +96,18 @@ public class CollectableItem : MonoBehaviour
         GameManager.Instance?.AddScore(scoreValue);
         GameManager.Instance?.AddCollectedItem(itemName);
 
-        // Disable the object
+        // Clear from boat collector before disabling
+        if (isPlayerInRange)
+        {
+            BoatCollector collector = FindObjectOfType<BoatCollector>();
+            if (collector != null)
+            {
+                collector.ClearNearbyCollectable(this);
+            }
+            isPlayerInRange = false;
+        }
+
+        // Remove highlight before disabling
         HighlightObject(false);
         gameObject.SetActive(false);
 
@@ -105,16 +116,61 @@ public class CollectableItem : MonoBehaviour
 
     private void HighlightObject(bool highlight)
     {
-        if (objectRenderer != null && highlightMaterial != null)
-        {
-            objectRenderer.material = highlight ? highlightMaterial : originalMaterial;
-        }
+        if (objectRenderer == null) return;
 
-        // Optional: Add glow effect or outline
         if (highlight)
         {
-            // You can add additional highlight effects here
+            // Apply highlight material
+            if (highlightMaterial != null)
+            {
+                objectRenderer.material = highlightMaterial;
+            }
+
+            // Optional: Add additional highlight effects
+            StartPulsatingEffect();
         }
+        else
+        {
+            // Restore original material
+            if (originalMaterial != null)
+            {
+                objectRenderer.material = originalMaterial;
+            }
+
+            // Stop any highlight effects
+            StopPulsatingEffect();
+        }
+    }
+
+    private void StartPulsatingEffect()
+    {
+        // Optional: Add a pulsating scale effect for better visibility
+        // You can use LeanTween, DOTween, or coroutines for this
+        StartCoroutine(PulsateEffect());
+    }
+
+    private void StopPulsatingEffect()
+    {
+        // Stop the pulsating effect and reset scale
+        StopAllCoroutines();
+        transform.localScale = Vector3.one;
+    }
+
+    private System.Collections.IEnumerator PulsateEffect()
+    {
+        float pulseSpeed = 2f;
+        float pulseIntensity = 0.2f;
+        Vector3 originalScale = transform.localScale;
+
+        while (isPlayerInRange && !isCollected)
+        {
+            float pulse = Mathf.Sin(Time.time * pulseSpeed) * pulseIntensity;
+            transform.localScale = originalScale * (1 + pulse);
+            yield return null;
+        }
+
+        // Reset scale when done
+        transform.localScale = originalScale;
     }
 
     // Visualize the collect range in editor

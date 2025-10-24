@@ -46,7 +46,12 @@ public class BoatCollector : MonoBehaviour
 
     public void SetNearbyCollectable(CollectableItem collectable)
     {
-        nearbyCollectable = collectable;
+        // Only set if not already collected and not already the current collectable
+        if (collectable != null && !collectable.IsCollected && nearbyCollectable != collectable)
+        {
+            nearbyCollectable = collectable;
+            Debug.Log($"Nearby collectable set: {collectable.itemName}");
+        }
     }
 
     public void ClearNearbyCollectable(CollectableItem collectable)
@@ -54,12 +59,13 @@ public class BoatCollector : MonoBehaviour
         if (nearbyCollectable == collectable)
         {
             nearbyCollectable = null;
+            Debug.Log($"Nearby collectable cleared: {collectable.itemName}");
         }
     }
 
     private void CollectItem()
     {
-        if (nearbyCollectable != null)
+        if (nearbyCollectable != null && !nearbyCollectable.IsCollected)
         {
             // Play sound
             if (collectSound != null && audioSource != null)
@@ -70,6 +76,9 @@ public class BoatCollector : MonoBehaviour
             // Collect the item
             nearbyCollectable.Collect();
             nearbyCollectable = null;
+
+            // Hide prompt immediately after collection
+            UpdateCollectPrompt();
         }
     }
 
@@ -77,12 +86,12 @@ public class BoatCollector : MonoBehaviour
     {
         if (collectPromptUI != null)
         {
-            bool showPrompt = nearbyCollectable != null;
+            bool showPrompt = nearbyCollectable != null && !nearbyCollectable.IsCollected;
             collectPromptUI.SetActive(showPrompt);
 
             if (showPrompt && collectPromptText != null)
             {
-                collectPromptText.text = $"Press E to collect {nearbyCollectable.itemName}";
+                collectPromptText.text = $"Press {collectKey} to collect {nearbyCollectable.itemName}";
             }
         }
     }
@@ -90,24 +99,52 @@ public class BoatCollector : MonoBehaviour
     // Optional: Raycast-based detection as backup
     void FixedUpdate()
     {
-        // This is a backup detection system using raycasts
+        // This backup system should check if we lost our current collectable
+        CheckForCollectablesWithOverlap();
+    }
+
+    private void CheckForCollectablesWithOverlap()
+    {
+        // If we have a current collectable, verify it's still in range
+        if (nearbyCollectable != null)
+        {
+            float distance = Vector3.Distance(transform.position, nearbyCollectable.transform.position);
+            if (distance > collectionRange || nearbyCollectable.IsCollected)
+            {
+                ClearNearbyCollectable(nearbyCollectable);
+            }
+        }
+
+        // If no current collectable, look for new ones
         if (nearbyCollectable == null)
         {
-            DetectCollectablesWithRaycast();
+            FindNewCollectables();
         }
     }
 
-    private void DetectCollectablesWithRaycast()
+    private void FindNewCollectables()
     {
         Collider[] hitColliders = Physics.OverlapSphere(transform.position, collectionRange);
+        CollectableItem closestCollectable = null;
+        float closestDistance = Mathf.Infinity;
+
         foreach (var hitCollider in hitColliders)
         {
             CollectableItem collectable = hitCollider.GetComponent<CollectableItem>();
-            if (collectable != null && !collectable.IsCollected) // Use the property instead
+            if (collectable != null && !collectable.IsCollected)
             {
-                SetNearbyCollectable(collectable);
-                break;
+                float distance = Vector3.Distance(transform.position, collectable.transform.position);
+                if (distance < closestDistance)
+                {
+                    closestCollectable = collectable;
+                    closestDistance = distance;
+                }
             }
+        }
+
+        if (closestCollectable != null)
+        {
+            SetNearbyCollectable(closestCollectable);
         }
     }
 
