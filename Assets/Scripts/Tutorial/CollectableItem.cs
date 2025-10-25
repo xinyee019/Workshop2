@@ -1,0 +1,182 @@
+using UnityEngine;
+using System.Collections;
+
+public class CollectableItem : MonoBehaviour
+{
+    [Header("Collectable Settings")]
+    public string itemName = "Trash";
+    public int scoreValue = 10;
+    public float collectRange = 3f;
+
+    [Header("Visual Feedback")]
+    public Material highlightMaterial;
+    public ParticleSystem collectParticles;
+
+    private Material originalMaterial;
+    private Renderer objectRenderer;
+    private bool isPlayerInRange = false;
+
+    // Private field with public property
+    private bool isCollected = false;
+    public bool IsCollected => isCollected;
+
+    void Start()
+    {
+        objectRenderer = GetComponent<Renderer>();
+        if (objectRenderer != null)
+        {
+            originalMaterial = objectRenderer.material;
+        }
+
+        // Auto-add a trigger collider if none exists
+        if (GetComponent<Collider>() == null)
+        {
+            SphereCollider collider = gameObject.AddComponent<SphereCollider>();
+            collider.isTrigger = true;
+            collider.radius = collectRange;
+        }
+    }
+
+    void Update()
+    {
+        // Rotate slowly for visual appeal
+        if (!isCollected)
+        {
+            transform.Rotate(0, 30 * Time.deltaTime, 0);
+        }
+    }
+
+    void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Player") && !isCollected)
+        {
+            isPlayerInRange = true;
+            HighlightObject(true);
+
+            // Notify the boat that this item is collectable
+            BoatCollector collector = other.GetComponent<BoatCollector>();
+            if (collector != null)
+            {
+                collector.SetNearbyCollectable(this);
+            }
+        }
+    }
+
+    void OnTriggerExit(Collider other)
+    {
+        if (other.CompareTag("Player"))
+        {
+            isPlayerInRange = false;
+            HighlightObject(false);
+
+            // Notify the boat that no item is nearby
+            BoatCollector collector = other.GetComponent<BoatCollector>();
+            if (collector != null)
+            {
+                collector.ClearNearbyCollectable(this);
+            }
+        }
+    }
+
+    public void Collect()
+    {
+        if (isCollected) return;
+
+        isCollected = true;
+
+        // Visual effects
+        if (collectParticles != null)
+        {
+            ParticleSystem particles = Instantiate(collectParticles, transform.position, Quaternion.identity);
+            particles.Play();
+            Destroy(particles.gameObject, 2f);
+        }
+
+        // Notify game manager or score system
+        GameManager.Instance?.AddScore(scoreValue);
+        GameManager.Instance?.AddCollectedItem(itemName);
+
+        // Clear from boat collector before disabling
+        if (isPlayerInRange)
+        {
+            BoatCollector collector = FindObjectOfType<BoatCollector>();
+            if (collector != null)
+            {
+                collector.ClearNearbyCollectable(this);
+            }
+            isPlayerInRange = false;
+        }
+
+        // Remove highlight before disabling
+        HighlightObject(false);
+        gameObject.SetActive(false);
+
+        Debug.Log($"Collected: {itemName} (+{scoreValue} points)");
+    }
+
+    private void HighlightObject(bool highlight)
+    {
+        if (objectRenderer == null) return;
+
+        if (highlight)
+        {
+            // Apply highlight material
+            if (highlightMaterial != null)
+            {
+                objectRenderer.material = highlightMaterial;
+            }
+
+            // Optional: Add additional highlight effects
+            StartPulsatingEffect();
+        }
+        else
+        {
+            // Restore original material
+            if (originalMaterial != null)
+            {
+                objectRenderer.material = originalMaterial;
+            }
+
+            // Stop any highlight effects
+            StopPulsatingEffect();
+        }
+    }
+
+    private void StartPulsatingEffect()
+    {
+        // Optional: Add a pulsating scale effect for better visibility
+        // You can use LeanTween, DOTween, or coroutines for this
+        StartCoroutine(PulsateEffect());
+    }
+
+    private void StopPulsatingEffect()
+    {
+        // Stop the pulsating effect and reset scale
+        StopAllCoroutines();
+        transform.localScale = Vector3.one;
+    }
+
+    private System.Collections.IEnumerator PulsateEffect()
+    {
+        float pulseSpeed = 2f;
+        float pulseIntensity = 0.2f;
+        Vector3 originalScale = transform.localScale;
+
+        while (isPlayerInRange && !isCollected)
+        {
+            float pulse = Mathf.Sin(Time.time * pulseSpeed) * pulseIntensity;
+            transform.localScale = originalScale * (1 + pulse);
+            yield return null;
+        }
+
+        // Reset scale when done
+        transform.localScale = originalScale;
+    }
+
+    // Visualize the collect range in editor
+    void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.green;
+        Gizmos.DrawWireSphere(transform.position, collectRange);
+    }
+}
