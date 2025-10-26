@@ -4943,7 +4943,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &7829847439032532611
 Transform:
   m_ObjectHideFlags: 0
@@ -5006,8 +5006,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   collectionRange: 3
   collectKey: 101
-  collectPromptUI: {fileID: 5991294512622046550, guid: dee71725af2b1d44992158d200c20ae9,
-    type: 3}
+  collectPromptUI: {fileID: 0}
   collectPromptText: {fileID: 0}
   collectSound: {fileID: 0}
   nearbyCollectable: {fileID: 0}

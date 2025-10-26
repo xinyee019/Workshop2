@@ -15,6 +15,7 @@ public class BoatCollector : MonoBehaviour
 
     public CollectableItem nearbyCollectable;
     private AudioSource audioSource;
+    private bool isInitialized = false;
 
     void Start()
     {
@@ -30,6 +31,8 @@ public class BoatCollector : MonoBehaviour
         {
             collectPromptUI.SetActive(false);
         }
+
+        isInitialized = true;
     }
 
     void Update()
@@ -60,6 +63,12 @@ public class BoatCollector : MonoBehaviour
         {
             nearbyCollectable = null;
             Debug.Log($"Nearby collectable cleared: {collectable.itemName}");
+
+            // Immediately hide prompt when clearing
+            if (collectPromptUI != null)
+            {
+                collectPromptUI.SetActive(false);
+            }
         }
     }
 
@@ -75,18 +84,29 @@ public class BoatCollector : MonoBehaviour
 
             // Collect the item
             nearbyCollectable.Collect();
+
+            // Clear reference and hide prompt
+            CollectableItem collectedItem = nearbyCollectable;
             nearbyCollectable = null;
 
             // Hide prompt immediately after collection
-            UpdateCollectPrompt();
+            if (collectPromptUI != null)
+            {
+                collectPromptUI.SetActive(false);
+            }
+
+            Debug.Log($"Collected: {collectedItem.itemName}");
         }
     }
 
     private void UpdateCollectPrompt()
     {
-        if (collectPromptUI != null)
+        if (collectPromptUI != null && isInitialized)
         {
-            bool showPrompt = nearbyCollectable != null && !nearbyCollectable.IsCollected;
+            bool showPrompt = nearbyCollectable != null &&
+                            !nearbyCollectable.IsCollected &&
+                            IsCollectableInRange(nearbyCollectable);
+
             collectPromptUI.SetActive(showPrompt);
 
             if (showPrompt && collectPromptText != null)
@@ -96,7 +116,14 @@ public class BoatCollector : MonoBehaviour
         }
     }
 
-    // Optional: Raycast-based detection as backup
+    private bool IsCollectableInRange(CollectableItem collectable)
+    {
+        if (collectable == null) return false;
+
+        float distance = Vector3.Distance(transform.position, collectable.transform.position);
+        return distance <= collectionRange;
+    }
+
     void FixedUpdate()
     {
         // This backup system should check if we lost our current collectable
@@ -105,17 +132,20 @@ public class BoatCollector : MonoBehaviour
 
     private void CheckForCollectablesWithOverlap()
     {
-        // If we have a current collectable, verify it's still in range
+        // If we have a current collectable, verify it's still in range and valid
         if (nearbyCollectable != null)
         {
-            float distance = Vector3.Distance(transform.position, nearbyCollectable.transform.position);
-            if (distance > collectionRange || nearbyCollectable.IsCollected)
+            // Check if collectable was destroyed, collected, or out of range
+            if (nearbyCollectable == null ||
+                nearbyCollectable.IsCollected ||
+                !IsCollectableInRange(nearbyCollectable))
             {
                 ClearNearbyCollectable(nearbyCollectable);
+                return; // Don't look for new ones immediately
             }
         }
 
-        // If no current collectable, look for new ones
+        // Only look for new collectables if we don't have a current valid one
         if (nearbyCollectable == null)
         {
             FindNewCollectables();
@@ -134,7 +164,7 @@ public class BoatCollector : MonoBehaviour
             if (collectable != null && !collectable.IsCollected)
             {
                 float distance = Vector3.Distance(transform.position, collectable.transform.position);
-                if (distance < closestDistance)
+                if (distance < closestDistance && distance <= collectionRange)
                 {
                     closestCollectable = collectable;
                     closestDistance = distance;
@@ -145,6 +175,15 @@ public class BoatCollector : MonoBehaviour
         if (closestCollectable != null)
         {
             SetNearbyCollectable(closestCollectable);
+        }
+    }
+
+    // Handle cases where collectable is destroyed without triggering collision
+    void OnDestroy()
+    {
+        if (collectPromptUI != null)
+        {
+            collectPromptUI.SetActive(false);
         }
     }
 
