@@ -331,6 +331,38 @@ public class Waves : MonoBehaviour
         }
     }
 
+    // Add this method to your Waves class
+    public Vector3 GetWorldVertexPosition(int x, int z)
+    {
+        if (!isInitialized || waterMesh == null)
+            return Vector3.zero;
+
+        int index = Index(x, z);
+        if (index >= 0 && index < waterMesh.vertices.Length)
+        {
+            return transform.TransformPoint(waterMesh.vertices[index]);
+        }
+        return Vector3.zero;
+    }
+
+    // Add this property to get all vertices in world space
+    public Vector3[] WorldVertices
+    {
+        get
+        {
+            if (!isInitialized || waterMesh == null)
+                return new Vector3[0];
+
+            Vector3[] worldVerts = new Vector3[waterMesh.vertices.Length];
+            for (int i = 0; i < waterMesh.vertices.Length; i++)
+            {
+                worldVerts[i] = transform.TransformPoint(waterMesh.vertices[i]);
+            }
+            return worldVerts;
+        }
+    }
+
+
     [Serializable]
     public struct Octave
     {
