@@ -5018,7 +5018,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &5013059164528508244
 Transform:
   m_ObjectHideFlags: 0
@@ -5088,6 +5088,12 @@ MonoBehaviour:
   - {fileID: 5678283143190138723}
   - {fileID: 7898100577067007654}
   - {fileID: 1053746666452017593}
+  BuoyancyForce: 15
+  BuoyancyDamping: 0.05
+  SubmergedVolumeMultiplier: 1.5
+  RotationSmoothTime: 0.3
+  MaxRotationSpeed: 50
+  useFastPhysics: 1
 --- !u!114 &458537677892121239
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5101,14 +5107,24 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Motor: {fileID: 8572900807335764648}
-  SteerPower: 150
   Power: 10
   MaxSpeed: 15
-  Drag: 0.1
-  TurnStopPower: 5
+  Acceleration: 2
+  Deceleration: 3
+  SteerPower: 150
   MaxTurnSpeed: 2
   MinTurnSpeed: 0.5
   TurnAcceleration: 1
+  TurnStopPower: 5
+  WaterDrag: 0.1
+  LateralDrag: 0.85
+  AngularDrag: 2
+  WakeEffectMultiplier: 1.2
+  SpeedTurnInfluence: 0.7
+  EnableInertia: 1
+  InertiaDamping: 0.95
+  WakeParticles: {fileID: 0}
+  MotorTiltAngle: 30
 --- !u!65 &4429253656144661930
 BoxCollider:
   m_ObjectHideFlags: 0
