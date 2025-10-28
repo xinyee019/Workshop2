@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
 using UnityEditor;
 
-[CustomEditor(typeof(ProceduralTerrainGenerator))]
+[CustomEditor(typeof(ProceduralTerrainGeneratorV2))]
 public class ProceduralTerrainGeneratorEditor : Editor
 {
     public override void OnInspectorGUI()
@@ -9,7 +9,7 @@ public class ProceduralTerrainGeneratorEditor : Editor
         // Draw default inspector
         DrawDefaultInspector();
 
-        ProceduralTerrainGenerator generator = (ProceduralTerrainGenerator)target;
+        ProceduralTerrainGeneratorV2 generator = (ProceduralTerrainGeneratorV2)target;
 
         // Add spacing
         GUILayout.Space(10);
