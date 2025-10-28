@@ -12,6 +12,7 @@ public class ProceduralTerrain : MonoBehaviour
     [Header("Terrain Settings")]
     public int width = 100;
     public int height = 100;
+    [Tooltip("Leave 0 to auto-randomize each play")]
     public int seed = 0;
 
     [Header("Noise Settings")]
@@ -54,12 +55,20 @@ public class ProceduralTerrain : MonoBehaviour
 
     void Start()
     {
+        //Auto-randomize seed each time you hit play (like Minecraft)
+        if (seed == 0)
+        {
+            seed = System.DateTime.Now.GetHashCode();
+        }
+
         GenerateTerrain();
+        Debug.Log("Generated Seed: " + seed);
+
     }
 
     void OnValidate()
     {
-        if (terrainMeshFilter != null)
+        if (terrainMeshFilter != null && Application.isPlaying == false)
         {
             GenerateTerrain();
         }
