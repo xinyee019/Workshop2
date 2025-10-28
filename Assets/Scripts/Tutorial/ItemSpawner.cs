@@ -9,7 +9,7 @@ public class ItemSpawner : MonoBehaviour
     {
         public GameObject prefab;
         [Range(0, 100)]
-        public int spawnWeight = 50; // Higher weight = more likely to spawn
+        public int spawnWeight = 50;
     }
 
     [Header("Spawn Settings")]
@@ -23,7 +23,8 @@ public class ItemSpawner : MonoBehaviour
     [SerializeField] private LayerMask spawnCheckMask = 1;
     [SerializeField] private float spawnCheckRadius = 0.5f;
 
-    [Header("Advanced Settings")]
+    [Header("Debug Settings")]
+    [SerializeField] private bool debugMode = true;
     [SerializeField] private bool spawnOnStart = true;
     [SerializeField] private bool showGizmos = true;
     [SerializeField] private Color gizmoColor = Color.green;
@@ -31,12 +32,16 @@ public class ItemSpawner : MonoBehaviour
     private List<GameObject> activeTrashItems = new List<GameObject>();
     private Coroutine spawnCoroutine;
     private int totalSpawnWeight;
+    private int spawnAttempts = 0;
 
     public int CurrentTrashCount => activeTrashItems.Count;
     public int MaxTrashCount => maxConcurrentItems;
+    public int SpawnAttempts => spawnAttempts;
 
     void Start()
     {
+        if (debugMode) Debug.Log("ItemSpawner Started");
+
         CalculateTotalWeight();
 
         if (spawnOnStart)
@@ -52,12 +57,15 @@ public class ItemSpawner : MonoBehaviour
         {
             totalSpawnWeight += trash.spawnWeight;
         }
+
+        if (debugMode) Debug.Log($"Total spawn weight calculated: {totalSpawnWeight}");
     }
 
     public void StartSpawning()
     {
         if (spawnCoroutine == null)
         {
+            if (debugMode) Debug.Log("Starting spawn coroutine");
             spawnCoroutine = StartCoroutine(SpawnRoutine());
         }
     }
@@ -66,6 +74,7 @@ public class ItemSpawner : MonoBehaviour
     {
         if (spawnCoroutine != null)
         {
+            if (debugMode) Debug.Log("Stopping spawn coroutine");
             StopCoroutine(spawnCoroutine);
             spawnCoroutine = null;
         }
@@ -73,6 +82,14 @@ public class ItemSpawner : MonoBehaviour
 
     private IEnumerator SpawnRoutine()
     {
+        if (debugMode) Debug.Log("Spawn routine started");
+
+        // Initial spawn
+        if (activeTrashItems.Count < maxConcurrentItems)
+        {
+            TrySpawnTrash();
+        }
+
         while (true)
         {
             yield return new WaitForSeconds(spawnInterval);
@@ -81,24 +98,46 @@ public class ItemSpawner : MonoBehaviour
             {
                 TrySpawnTrash();
             }
+            else if (debugMode)
+            {
+                Debug.Log($"Max items reached ({activeTrashItems.Count}/{maxConcurrentItems}), waiting...");
+            }
         }
     }
 
     public void TrySpawnTrash()
     {
+        spawnAttempts++;
+
+        if (trashPrefabs == null || trashPrefabs.Length == 0)
+        {
+            if (debugMode) Debug.LogError("No trash prefabs assigned!");
+            return;
+        }
+
         Vector3 spawnPosition = GetRandomSpawnPosition();
 
         if (IsValidSpawnPosition(spawnPosition))
         {
             TrashItem trashToSpawn = GetRandomTrashItem();
-            if (trashToSpawn != null)
+            if (trashToSpawn != null && trashToSpawn.prefab != null)
             {
                 GameObject newTrash = Instantiate(trashToSpawn.prefab, spawnPosition, GetRandomRotation());
                 activeTrashItems.Add(newTrash);
 
+                if (debugMode) Debug.Log($"Spawned {trashToSpawn.prefab.name} at {spawnPosition}");
+
                 // Auto-destroy after lifetime
                 StartCoroutine(DestroyAfterTime(newTrash, itemLifetime));
             }
+            else
+            {
+                if (debugMode) Debug.LogError("Invalid trash item or prefab reference!");
+            }
+        }
+        else
+        {
+            if (debugMode) Debug.LogWarning($"Invalid spawn position at {spawnPosition}, attempt #{spawnAttempts}");
         }
     }
 
@@ -116,7 +155,14 @@ public class ItemSpawner : MonoBehaviour
     private bool IsValidSpawnPosition(Vector3 position)
     {
         // Check if position is clear using sphere cast
-        return !Physics.CheckSphere(position, spawnCheckRadius, spawnCheckMask);
+        bool isOccupied = Physics.CheckSphere(position, spawnCheckRadius, spawnCheckMask);
+
+        if (debugMode && isOccupied)
+        {
+            Debug.Log($"Position {position} is occupied, checking with radius {spawnCheckRadius}");
+        }
+
+        return !isOccupied;
     }
 
     private Quaternion GetRandomRotation()
@@ -126,7 +172,18 @@ public class ItemSpawner : MonoBehaviour
 
     private TrashItem GetRandomTrashItem()
     {
-        if (trashPrefabs.Length == 0) return null;
+        if (trashPrefabs.Length == 0)
+        {
+            if (debugMode) Debug.LogError("No trash prefabs available!");
+            return null;
+        }
+
+        // If total weight is 0, just return random item
+        if (totalSpawnWeight <= 0)
+        {
+            if (debugMode) Debug.LogWarning("Total spawn weight is 0, using random selection");
+            return trashPrefabs[Random.Range(0, trashPrefabs.Length)];
+        }
 
         int randomValue = Random.Range(0, totalSpawnWeight);
         int currentWeight = 0;
@@ -136,6 +193,7 @@ public class ItemSpawner : MonoBehaviour
             currentWeight += trash.spawnWeight;
             if (randomValue < currentWeight)
             {
+                if (debugMode) Debug.Log($"Selected {trash.prefab.name} with weight {trash.spawnWeight}");
                 return trash;
             }
         }
@@ -149,6 +207,7 @@ public class ItemSpawner : MonoBehaviour
 
         if (trashObject != null)
         {
+            if (debugMode) Debug.Log($"Destroying {trashObject.name} after {delay} seconds");
             activeTrashItems.Remove(trashObject);
             Destroy(trashObject);
         }
@@ -159,12 +218,15 @@ public class ItemSpawner : MonoBehaviour
     {
         if (activeTrashItems.Count < maxConcurrentItems)
         {
+            if (debugMode) Debug.Log("Force spawning item");
             TrySpawnTrash();
         }
     }
 
     public void ClearAllTrash()
     {
+        if (debugMode) Debug.Log("Clearing all trash items");
+
         StopAllCoroutines();
 
         foreach (var trash in activeTrashItems)
@@ -174,11 +236,19 @@ public class ItemSpawner : MonoBehaviour
         }
 
         activeTrashItems.Clear();
+
+        // Restart spawning if it was running
+        if (spawnCoroutine != null)
+        {
+            StartSpawning();
+        }
     }
 
     public void SetSpawnRate(float newInterval)
     {
         spawnInterval = Mathf.Max(0.1f, newInterval);
+
+        if (debugMode) Debug.Log($"Spawn rate set to {newInterval}");
 
         // Restart coroutine with new interval
         if (spawnCoroutine != null)
@@ -192,6 +262,8 @@ public class ItemSpawner : MonoBehaviour
     {
         maxConcurrentItems = Mathf.Max(1, newMax);
 
+        if (debugMode) Debug.Log($"Max items set to {newMax}");
+
         // Remove excess items if necessary
         while (activeTrashItems.Count > maxConcurrentItems)
         {
@@ -199,6 +271,17 @@ public class ItemSpawner : MonoBehaviour
                 Destroy(activeTrashItems[0]);
             activeTrashItems.RemoveAt(0);
         }
+    }
+
+    // Debug method to check spawner status
+    public void PrintStatus()
+    {
+        Debug.Log($"ItemSpawner Status:");
+        Debug.Log($"- Active Items: {activeTrashItems.Count}/{maxConcurrentItems}");
+        Debug.Log($"- Spawn Attempts: {spawnAttempts}");
+        Debug.Log($"- Prefabs Available: {trashPrefabs?.Length ?? 0}");
+        Debug.Log($"- Spawn Area: {spawnArea}");
+        Debug.Log($"- Spawn Position: {transform.position}");
     }
 
     void OnDrawGizmosSelected()
@@ -210,6 +293,7 @@ public class ItemSpawner : MonoBehaviour
 
         // Draw spawn check radius at a sample position
         Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(transform.position, spawnCheckRadius);
+        Vector3 samplePos = transform.position + new Vector3(spawnArea.x / 2, 0, 0);
+        Gizmos.DrawWireSphere(samplePos, spawnCheckRadius);
     }
 }
