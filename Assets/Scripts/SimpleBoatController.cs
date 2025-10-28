@@ -13,28 +13,36 @@ public class SimpleBoatController : MonoBehaviour
     public float turnLimit = 1f;
 
     [Header("Fake Buoyancy Settings")]
-    public float bobFrequency = 1.5f;    // How fast the boat bobs
-    public float bobAmplitude = 0.15f;   // How high/low it moves
-    public float tiltAmount = 5f;        // Max forward/back tilt
-    public float rollAmount = 4f;        // Max sideways roll
-    public float buoyancySmooth = 2f;    // How smoothly rotation transitions
+    public float bobFrequency = 1.5f;
+    public float bobAmplitude = 0.15f;
+    public float tiltAmount = 5f;
+    public float rollAmount = 4f;
+    public float buoyancySmooth = 2f;
+
+    [Header("Environment Settings")]
+    public float waterHeight = 0f;
+    public LayerMask terrainLayer;
+    public float terrainCheckHeight = 100f;
+    public float collisionBuffer = 0.5f; // Distance to stop before terrain
 
     private float currentSpeed = 0f;
     private float moveInput = 0f;
     private float turnInput = 0f;
     private float bobOffset;
     private Quaternion baseRotation;
+    private Vector3 lastValidPosition;
 
     void Start()
     {
         baseRotation = transform.rotation;
-        bobOffset = Random.Range(0f, 100f); // Desync waves between boats
+        bobOffset = Random.Range(0f, 100f);
+        lastValidPosition = transform.position;
     }
 
     void Update()
     {
-        moveInput = Input.GetAxisRaw("Vertical");   // W/S
-        turnInput = Input.GetAxisRaw("Horizontal"); // A/D
+        moveInput = Input.GetAxisRaw("Vertical");
+        turnInput = Input.GetAxisRaw("Horizontal");
 
         HandleMovement();
         HandleTurning();
@@ -43,6 +51,7 @@ public class SimpleBoatController : MonoBehaviour
 
     void HandleMovement()
     {
+        // Forward/Reverse Acceleration
         if (moveInput != 0)
         {
             float targetSpeed = moveInput > 0 ? maxSpeed : -reverseSpeed;
@@ -53,7 +62,29 @@ public class SimpleBoatController : MonoBehaviour
             currentSpeed = Mathf.MoveTowards(currentSpeed, 0, deceleration * Time.deltaTime);
         }
 
-        transform.position += transform.forward * currentSpeed * Time.deltaTime;
+        // Calculate potential new position
+        Vector3 potentialPosition = transform.position + transform.forward * currentSpeed * Time.deltaTime;
+
+        // Check terrain height at potential position
+        float terrainY = GetTerrainHeightAt(potentialPosition);
+        float waterY = waterHeight;
+
+        // If terrain is significantly higher than water, bounce back
+        if (terrainY > waterY + collisionBuffer)
+        {
+            // Stop movement and push back
+            currentSpeed = 0f;
+            transform.position = lastValidPosition;
+        }
+        else
+        {
+            // Valid position, move forward
+            transform.position = potentialPosition;
+            lastValidPosition = transform.position;
+        }
+
+        // Keep boat at water level
+        transform.position = new Vector3(transform.position.x, waterY, transform.position.z);
     }
 
     void HandleTurning()
@@ -81,9 +112,20 @@ public class SimpleBoatController : MonoBehaviour
         Quaternion targetRotation = Quaternion.Euler(baseRotation.eulerAngles.x + pitch, transform.eulerAngles.y, baseRotation.eulerAngles.z + roll);
         transform.rotation = Quaternion.Lerp(transform.rotation, targetRotation, Time.deltaTime * buoyancySmooth);
 
-        // Apply bobbing vertically
+        // Apply bobbing (relative to water height)
         Vector3 pos = transform.position;
-        pos.y = Mathf.Sin(Time.time * bobFrequency + bobOffset) * bobAmplitude + pos.y;
+        pos.y = waterHeight + bob;
         transform.position = Vector3.Lerp(transform.position, pos, Time.deltaTime * buoyancySmooth);
+    }
+
+    float GetTerrainHeightAt(Vector3 position)
+    {
+        // Cast downward from above to detect terrain
+        RaycastHit hit;
+        if (Physics.Raycast(position + Vector3.up * terrainCheckHeight, Vector3.down, out hit, terrainCheckHeight * 2f, terrainLayer))
+        {
+            return hit.point.y;
+        }
+        return Mathf.NegativeInfinity; // No terrain found, assume water
     }
 }
