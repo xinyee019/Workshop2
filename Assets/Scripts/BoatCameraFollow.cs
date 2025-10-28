@@ -4,7 +4,7 @@ public class BoatCameraFollow : MonoBehaviour
 {
     [Header("Target Settings")]
     public Transform target;
-    public float waterLevel = 0f; // Set this to your water surface Y position
+    public float waterLevel = 0f;
 
     [Header("Camera Settings")]
     public float distance = 12f;
@@ -13,25 +13,24 @@ public class BoatCameraFollow : MonoBehaviour
     public float smoothness = 0.1f;
 
     [Header("DREDGE-style Settings")]
-    public float minHeightAboveWater = 1f; // Minimum height above water
-    public float defaultPitchAngle = 25f; // Default camera pitch (looking slightly down)
-    public float maxPitchAngle = 45f; // Maximum downward angle
-    public float minPitchAngle = 10f; // Minimum downward angle
-    public float orbitSpeedMultiplier = 1.5f; // How fast camera orbits around boat
+    public float minHeightAboveWater = 1f;
+    public float pitchAngle = 25f; // Fixed downward viewing angle
+    public float orbitSpeedMultiplier = 1.5f;
+    public float autoRealignSpeed = 1.5f; // Speed for camera to auto-align behind the boat
+    public float autoRealignDelay = 2f;   // Delay (in seconds) before realignment starts
 
-    private float currentX = 0f;
-    private float currentY = 0f;
+    private float currentYaw = 0f;
     private Vector3 velocity = Vector3.zero;
     private float currentDistance;
+    private float lastInputTime = 0f;
 
     void Start()
     {
         if (target != null)
         {
-            currentY = target.eulerAngles.y;
+            currentYaw = target.eulerAngles.y;
         }
 
-        currentX = defaultPitchAngle; // Start with default pitch
         currentDistance = distance;
 
         Cursor.lockState = CursorLockMode.Locked;
@@ -48,14 +47,24 @@ public class BoatCameraFollow : MonoBehaviour
 
     void HandleInput()
     {
-        // Mouse look with orbit multiplier
-        currentY += Input.GetAxis("Mouse X") * sensitivity * orbitSpeedMultiplier;
-        currentX -= Input.GetAxis("Mouse Y") * sensitivity; // Inverted for more natural control
+        float mouseX = Input.GetAxis("Mouse X");
 
-        // Clamp vertical angle to prevent going under water
-        currentX = Mathf.Clamp(currentX, minPitchAngle, maxPitchAngle);
+        // Detect manual input
+        if (Mathf.Abs(mouseX) > 0.01f)
+        {
+            currentYaw += mouseX * sensitivity * orbitSpeedMultiplier;
+            lastInputTime = Time.time;
+        }
 
-        // Reset camera with R key
+        // Zoom control
+        float scroll = Input.GetAxis("Mouse ScrollWheel");
+        if (scroll != 0)
+        {
+            currentDistance -= scroll * 3f;
+            currentDistance = Mathf.Clamp(currentDistance, 5f, 20f);
+        }
+
+        // Reset manually
         if (Input.GetKeyDown(KeyCode.R))
         {
             ResetCamera();
@@ -64,29 +73,34 @@ public class BoatCameraFollow : MonoBehaviour
 
     void UpdateCamera()
     {
-        // Calculate rotation
-        Quaternion rotation = Quaternion.Euler(currentX, currentY, 0f);
+        if (!target) return;
 
-        // Calculate desired position
-        Vector3 desiredPosition = target.position + rotation * new Vector3(0f, height, -currentDistance);
+        // Auto realign camera if no input after delay
+        if (Time.time - lastInputTime > autoRealignDelay)
+        {
+            float targetYaw = target.eulerAngles.y;
+            currentYaw = Mathf.LerpAngle(currentYaw, targetYaw, Time.deltaTime * autoRealignSpeed);
+        }
 
-        // Ensure camera doesn't go below water level
+        // Calculate rotation (fixed downward pitch)
+        Quaternion rotation = Quaternion.Euler(pitchAngle, currentYaw, 0f);
+
+        // Desired camera position behind boat
+        Vector3 offset = rotation * new Vector3(0f, height, -currentDistance);
+        Vector3 desiredPosition = target.position + offset;
+
+        // Prevent camera from dipping below water
         float minY = waterLevel + minHeightAboveWater;
         if (desiredPosition.y < minY)
         {
             desiredPosition.y = minY;
-
-            // Adjust pitch to maintain look direction when constrained by water
-            Vector3 directionToTarget = target.position - desiredPosition;
-            float constrainedPitch = Mathf.Atan2(directionToTarget.y, new Vector2(directionToTarget.x, directionToTarget.z).magnitude) * Mathf.Rad2Deg;
-            currentX = Mathf.Clamp(constrainedPitch, minPitchAngle, maxPitchAngle);
         }
 
-        // Apply smooth movement
+        // Smooth movement
         transform.position = Vector3.SmoothDamp(transform.position, desiredPosition, ref velocity, smoothness);
 
-        // Look at a point slightly in front of the boat for better navigation view
-        Vector3 lookTarget = target.position + target.forward * 3f + Vector3.up * 1f;
+        // Look toward the front of the boat
+        Vector3 lookTarget = target.position + target.forward * 4f + Vector3.up * 1.5f;
         transform.LookAt(lookTarget);
     }
 
@@ -94,41 +108,22 @@ public class BoatCameraFollow : MonoBehaviour
     {
         if (target != null)
         {
-            currentY = target.eulerAngles.y;
-            currentX = defaultPitchAngle;
+            currentYaw = target.eulerAngles.y;
         }
     }
 
-    // Public methods for external control
-    public void SetCameraDistance(float newDistance)
-    {
-        currentDistance = Mathf.Clamp(newDistance, 5f, 20f);
-    }
-
-    public void SetPitchAngle(float pitch)
-    {
-        currentX = Mathf.Clamp(pitch, minPitchAngle, maxPitchAngle);
-    }
-
-    // Draw debug gizmos
     void OnDrawGizmosSelected()
     {
         if (target != null)
         {
-            // Draw water level
             Gizmos.color = Color.blue;
             Vector3 waterStart = new Vector3(target.position.x - 10f, waterLevel, target.position.z - 10f);
             Vector3 waterEnd = new Vector3(target.position.x + 10f, waterLevel, target.position.z + 10f);
             Gizmos.DrawLine(waterStart, waterEnd);
 
-            // Draw camera constraints
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(target.position + Vector3.up * (waterLevel + minHeightAboveWater), 1f);
-
-            // Draw look target
-            Vector3 lookTarget = target.position + target.forward * 3f + Vector3.up * 1f;
+            Vector3 lookTarget = target.position + target.forward * 4f + Vector3.up * 1.5f;
             Gizmos.color = Color.red;
-            Gizmos.DrawWireSphere(lookTarget, 0.5f);
+            Gizmos.DrawWireSphere(lookTarget, 0.4f);
             Gizmos.DrawLine(transform.position, lookTarget);
         }
     }
