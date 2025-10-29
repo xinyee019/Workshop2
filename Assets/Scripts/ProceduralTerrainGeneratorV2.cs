@@ -26,6 +26,19 @@ public class ProceduralTerrainGeneratorV2 : MonoBehaviour
     [Range(0f, 1f)] public float persistence = 0.5f;
     public float lacunarity = 2f;
 
+    [Header("Terrain Layers (Textures)")]
+    public TerrainLayer waterLayer;
+    public TerrainLayer sandLayer;
+    public TerrainLayer grassLayer;
+    public TerrainLayer rockLayer;
+    public TerrainLayer snowLayer;
+
+    [Header("Height Thresholds for Layers")]
+    [Range(0f, 1f)] public float sandHeight = 0.3f;
+    [Range(0f, 1f)] public float grassHeight = 0.45f;
+    [Range(0f, 1f)] public float rockHeight = 0.6f;
+    [Range(0f, 1f)] public float snowHeight = 0.8f;
+
     private Terrain terrain;
     private int currentSeed;
 
@@ -75,6 +88,9 @@ public class ProceduralTerrainGeneratorV2 : MonoBehaviour
 
         float[,] heights = GenerateHeights(data.heightmapResolution);
         data.SetHeights(0, 0, heights);
+
+        // Apply textures based on height
+        ApplyTerrainTextures(data, heights);
     }
 
     float[,] GenerateHeights(int resolution)
@@ -94,8 +110,6 @@ public class ProceduralTerrainGeneratorV2 : MonoBehaviour
             float offsetYOctave = Random.Range(-10000f, 10000f);
             octaveOffsets[i] = new Vector2(offsetXOctave, offsetYOctave);
         }
-
-        float maxNoiseValue = 0f;
 
         for (int x = 0; x < resolution; x++)
         {
@@ -120,7 +134,6 @@ public class ProceduralTerrainGeneratorV2 : MonoBehaviour
                 }
 
                 noiseValue /= maxAmplitude;
-                maxNoiseValue = Mathf.Max(maxNoiseValue, noiseValue);
 
                 // Distance from center for island shape
                 float distance = Vector2.Distance(new Vector2(x, y), center);
@@ -132,5 +145,69 @@ public class ProceduralTerrainGeneratorV2 : MonoBehaviour
         }
 
         return heights;
+    }
+
+    void ApplyTerrainTextures(TerrainData data, float[,] heights)
+    {
+        int resolution = data.alphamapResolution;
+        float[,,] alphamaps = new float[resolution, resolution, 5]; // 5 layers
+
+        for (int y = 0; y < resolution; y++)
+        {
+            for (int x = 0; x < resolution; x++)
+            {
+                // Map alphamap coordinates to heightmap
+                float heightX = (x / (float)resolution) * (heights.GetLength(0) - 1);
+                float heightY = (y / (float)resolution) * (heights.GetLength(1) - 1);
+
+                int hx = Mathf.Clamp((int)heightX, 0, heights.GetLength(0) - 1);
+                int hy = Mathf.Clamp((int)heightY, 0, heights.GetLength(1) - 1);
+
+                float height = heights[hy, hx];
+
+                // Determine texture based on height
+                float water = height < sandHeight ? 1f : 0f;
+                float sand = (height >= sandHeight && height < grassHeight) ? 1f : 0f;
+                float grass = (height >= grassHeight && height < rockHeight) ? 1f : 0f;
+                float rock = (height >= rockHeight && height < snowHeight) ? 1f : 0f;
+                float snow = height >= snowHeight ? 1f : 0f;
+
+                // Smooth transitions between layers
+                if (height >= sandHeight - 0.05f && height < sandHeight + 0.05f)
+                {
+                    float blend = (height - (sandHeight - 0.05f)) / 0.1f;
+                    water = 1f - blend;
+                    sand = blend;
+                }
+                if (height >= grassHeight - 0.05f && height < grassHeight + 0.05f)
+                {
+                    float blend = (height - (grassHeight - 0.05f)) / 0.1f;
+                    sand = 1f - blend;
+                    grass = blend;
+                }
+                if (height >= rockHeight - 0.05f && height < rockHeight + 0.05f)
+                {
+                    float blend = (height - (rockHeight - 0.05f)) / 0.1f;
+                    grass = 1f - blend;
+                    rock = blend;
+                }
+                if (height >= snowHeight - 0.05f && height < snowHeight + 0.05f)
+                {
+                    float blend = (height - (snowHeight - 0.05f)) / 0.1f;
+                    rock = 1f - blend;
+                    snow = blend;
+                }
+
+                // Normalize and assign
+                float total = water + sand + grass + rock + snow;
+                alphamaps[y, x, 0] = water / total;
+                alphamaps[y, x, 1] = sand / total;
+                alphamaps[y, x, 2] = grass / total;
+                alphamaps[y, x, 3] = rock / total;
+                alphamaps[y, x, 4] = snow / total;
+            }
+        }
+
+        data.SetAlphamaps(0, 0, alphamaps);
     }
 }
