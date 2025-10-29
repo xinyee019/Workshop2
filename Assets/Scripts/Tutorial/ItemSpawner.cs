@@ -20,9 +20,14 @@ public class ItemSpawner : MonoBehaviour
 
     [Header("Spawn Area")]
     [SerializeField] private Vector3 spawnArea = new Vector3(10f, 0f, 10f);
-    [SerializeField] private float spawnHeight = 0.5f; // Height above ground
+    [SerializeField] private float spawnHeight = 0.5f;
     [SerializeField] private LayerMask spawnCheckMask = 1;
-    [SerializeField] private float spawnCheckRadius = 0.1f; // Reduced radius
+    [SerializeField] private float spawnCheckRadius = 0.1f;
+
+    [Header("Terrain Exclusion")]
+    [SerializeField] private Terrain terrain; // assign your island terrain here
+    [SerializeField] private float waterHeight = 0f; // Y position of your water plane
+    [SerializeField] private float exclusionMargin = 0.2f; // how far below water counts as valid water
 
     [Header("Debug Settings")]
     [SerializeField] private bool debugMode = true;
@@ -42,18 +47,14 @@ public class ItemSpawner : MonoBehaviour
         CalculateTotalWeight();
 
         if (spawnOnStart)
-        {
             StartSpawning();
-        }
     }
 
     void CalculateTotalWeight()
     {
         totalSpawnWeight = 0;
         foreach (var trash in trashPrefabs)
-        {
             totalSpawnWeight += trash.spawnWeight;
-        }
 
         if (debugMode) Debug.Log($"Total spawn weight calculated: {totalSpawnWeight}");
     }
@@ -76,9 +77,7 @@ public class ItemSpawner : MonoBehaviour
             yield return new WaitForSeconds(spawnInterval);
 
             if (activeTrashItems.Count < maxConcurrentItems)
-            {
                 TrySpawnTrash();
-            }
         }
     }
 
@@ -92,10 +91,13 @@ public class ItemSpawner : MonoBehaviour
             return;
         }
 
-        // Try multiple positions before giving up
-        for (int i = 0; i < 5; i++) // Try 5 different positions
+        for (int i = 0; i < 5; i++)
         {
             Vector3 spawnPosition = GetRandomSpawnPosition();
+
+            // Skip spawn if above or too close to terrain height
+            if (!IsValidWaterPosition(spawnPosition))
+                continue;
 
             if (IsValidSpawnPosition(spawnPosition))
             {
@@ -108,19 +110,19 @@ public class ItemSpawner : MonoBehaviour
                     if (debugMode) Debug.Log($"Spawned {trashToSpawn.prefab.name} at {spawnPosition}");
 
                     StartCoroutine(DestroyAfterTime(newTrash, itemLifetime));
-                    return; // Successfully spawned, exit the method
+                    return;
                 }
             }
         }
 
-        if (debugMode) Debug.LogWarning($"Failed to find valid spawn position after 5 attempts");
+        if (debugMode) Debug.LogWarning("Failed to find valid spawn position after 5 attempts");
     }
 
     private Vector3 GetRandomSpawnPosition()
     {
         Vector3 randomPoint = new Vector3(
             Random.Range(-spawnArea.x / 2, spawnArea.x / 2),
-            spawnHeight, // Use fixed height above ground
+            waterHeight,
             Random.Range(-spawnArea.z / 2, spawnArea.z / 2)
         );
 
@@ -129,20 +131,32 @@ public class ItemSpawner : MonoBehaviour
 
     private bool IsValidSpawnPosition(Vector3 position)
     {
-        // Check if position is clear using sphere cast
         bool isOccupied = Physics.CheckSphere(position, spawnCheckRadius, spawnCheckMask);
 
         if (debugMode && isOccupied)
         {
-            // Find out what we're hitting
             Collider[] hitColliders = Physics.OverlapSphere(position, spawnCheckRadius, spawnCheckMask);
             if (hitColliders.Length > 0)
-            {
                 Debug.Log($"Position {position} is occupied by: {hitColliders[0].name}");
-            }
         }
 
         return !isOccupied;
+    }
+
+    private bool IsValidWaterPosition(Vector3 position)
+    {
+        if (terrain == null) return true; // if no terrain assigned, skip check
+
+        float terrainHeight = terrain.SampleHeight(position) + terrain.GetPosition().y;
+
+        // Must be below water surface (so on water) but not too far under
+        bool isOnWater = terrainHeight < waterHeight - exclusionMargin;
+        if (debugMode && !isOnWater)
+        {
+            Debug.Log($"Rejected spawn at {position}: terrainHeight={terrainHeight:F2}, waterHeight={waterHeight:F2}");
+        }
+
+        return isOnWater;
     }
 
     private Quaternion GetRandomRotation()
@@ -162,9 +176,7 @@ public class ItemSpawner : MonoBehaviour
         {
             currentWeight += trash.spawnWeight;
             if (randomValue < currentWeight)
-            {
                 return trash;
-            }
         }
 
         return trashPrefabs[0];
@@ -181,7 +193,6 @@ public class ItemSpawner : MonoBehaviour
         }
     }
 
-    // Quick test method
     [ContextMenu("Test Spawn Immediately")]
     public void TestSpawnImmediately()
     {
