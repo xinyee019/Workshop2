@@ -1,7 +1,8 @@
 using UnityEngine;
 using System.Collections;
+using Photon.Pun;
 
-public class CollectableItem : MonoBehaviour
+public class CollectableItem : MonoBehaviourPunCallbacks
 {
     [Header("Collectable Settings")]
     public string itemName = "Trash";
@@ -50,6 +51,11 @@ public class CollectableItem : MonoBehaviour
     {
         if (other.CompareTag("Player") && !isCollected)
         {
+            // Only allow collection if this is the local player
+            PhotonView photonView = other.GetComponent<PhotonView>();
+            if (photonView != null && !photonView.IsMine)
+                return;
+
             isPlayerInRange = true;
             HighlightObject(true);
 
@@ -66,6 +72,11 @@ public class CollectableItem : MonoBehaviour
     {
         if (other.CompareTag("Player"))
         {
+            // Only handle for local player
+            PhotonView photonView = other.GetComponent<PhotonView>();
+            if (photonView != null && !photonView.IsMine)
+                return;
+
             isPlayerInRange = false;
             HighlightObject(false);
 
@@ -82,6 +93,10 @@ public class CollectableItem : MonoBehaviour
     {
         if (isCollected) return;
 
+        // In multiplayer, only allow the player who triggered to collect
+        if (PhotonNetwork.IsConnected && !photonView.IsMine)
+            return;
+
         isCollected = true;
 
         // Visual effects
@@ -93,8 +108,11 @@ public class CollectableItem : MonoBehaviour
         }
 
         // Notify game manager or score system
-        GameManager.Instance?.AddScore(scoreValue);
-        GameManager.Instance?.AddCollectedItem(itemName);
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.AddScore(scoreValue);
+            GameManager.Instance.AddCollectedItem(itemName);
+        }
 
         // Clear from boat collector before disabling
         if (isPlayerInRange)
@@ -109,7 +127,24 @@ public class CollectableItem : MonoBehaviour
 
         // Remove highlight before disabling
         HighlightObject(false);
-        gameObject.SetActive(false);
+
+        // Handle object destruction differently in multiplayer
+        if (PhotonNetwork.IsConnected)
+        {
+            // Use PhotonNetwork.Destroy for networked objects
+            if (photonView != null)
+            {
+                PhotonNetwork.Destroy(gameObject);
+            }
+            else
+            {
+                gameObject.SetActive(false);
+            }
+        }
+        else
+        {
+            gameObject.SetActive(false);
+        }
 
         Debug.Log($"Collected: {itemName} (+{scoreValue} points)");
     }
@@ -145,7 +180,6 @@ public class CollectableItem : MonoBehaviour
     private void StartPulsatingEffect()
     {
         // Optional: Add a pulsating scale effect for better visibility
-        // You can use LeanTween, DOTween, or coroutines for this
         StartCoroutine(PulsateEffect());
     }
 
