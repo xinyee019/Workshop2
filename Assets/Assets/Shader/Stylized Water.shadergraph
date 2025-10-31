@@ -3493,7 +3493,7 @@
     "m_Title": "Combine Color",
     "m_Position": {
         "x": 494.0,
-        "y": -984.0000610351563
+        "y": -984.0
     }
 }
 
@@ -3998,10 +3998,10 @@
         "m_Expanded": true,
         "m_Position": {
             "serializedVersion": "2",
-            "x": 993.0,
-            "y": -1492.0001220703125,
+            "x": 957.0,
+            "y": -1516.0,
             "width": 208.0,
-            "height": 302.0001220703125
+            "height": 302.0
         }
     },
     "m_Slots": [
