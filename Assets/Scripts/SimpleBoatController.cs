@@ -33,41 +33,37 @@ public class SimpleBoatController : MonoBehaviourPunCallbacks
     private Quaternion baseRotation;
     private Vector3 lastValidPosition;
 
-    PhotonView photonView;
+    private new PhotonView photonView;
 
     void Start()
     {
-        photonView = GetComponent<PhotonView>();
-
-        baseRotation = transform.rotation;
-        bobOffset = Random.Range(0f, 100f);
-        lastValidPosition = transform.position;
-
-        // Disable camera and audio for non-owned boats
-        if (!photonView.IsMine)
+        // Use base.photonView instead of declaring a new one
+        if (!base.photonView.IsMine)
         {
-            // Disable all cameras on this boat
+            // Disable cameras and audio listeners
             Camera[] cameras = GetComponentsInChildren<Camera>();
             foreach (Camera cam in cameras)
             {
                 cam.enabled = false;
             }
 
-            // Disable audio listeners
             AudioListener[] listeners = GetComponentsInChildren<AudioListener>();
             foreach (AudioListener listener in listeners)
             {
                 listener.enabled = false;
             }
 
-            // Optionally disable this script to prevent unnecessary updates
             enabled = false;
         }
+
+        baseRotation = transform.rotation;
+        bobOffset = Random.Range(0f, 100f);
+        lastValidPosition = transform.position;
     }
 
     void Update()
     {
-        if (!photonView.IsMine)
+        if (!base.photonView.IsMine) // Use base.photonView here
             return;
 
         moveInput = Input.GetAxisRaw("Vertical");

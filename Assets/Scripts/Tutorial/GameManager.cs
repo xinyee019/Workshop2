@@ -10,7 +10,7 @@ public class GameManager : MonoBehaviourPunCallbacks
 
     [Header("Game Stats")]
     public int totalScore = 0;
-    public List<string> collectedItems = new List<string>();
+    public List<CollectableItem> collectedItems = new List<CollectableItem>();
 
     [Header("UI References")]
     public Text scoreText;
@@ -19,6 +19,9 @@ public class GameManager : MonoBehaviourPunCallbacks
     [Header("Multiplayer Setup")]
     public GameObject playerPrefab;
     public Transform[] spawnPoints;
+
+    [Header("Collectable Prefab References")]
+    public GameObject[] collectablePrefabs;
 
     void Awake()
     {
@@ -147,29 +150,32 @@ public class GameManager : MonoBehaviourPunCallbacks
         }
     }
 
-    // Your original methods - MAKE SURE THESE EXIST AND ARE PUBLIC
     public void AddScore(int points)
     {
         totalScore += points;
         UpdateUI();
 
-        // Optional: Sync score across network if needed
         if (PhotonNetwork.InRoom)
         {
             Debug.Log($"Score updated: {totalScore}");
         }
     }
 
-    public void AddCollectedItem(string itemName)
+    public void AddCollectedItem(CollectableItem item)
     {
-        collectedItems.Add(itemName);
+        collectedItems.Add(item);
         UpdateUI();
 
-        // Optional: Sync collected items across network if needed
         if (PhotonNetwork.InRoom)
         {
-            Debug.Log($"Item collected: {itemName}");
+            Debug.Log($"Item collected: {item.itemName}");
         }
+    }
+
+    public void RemoveCollectedItem(CollectableItem item)
+    {
+        collectedItems.Remove(item);
+        UpdateUI();
     }
 
     private void UpdateUI()
@@ -190,8 +196,7 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         Debug.Log("GameManager: Joined room successfully");
 
-        // If we're already in the game scene, setup multiplayer
-        if (SceneManager.GetActiveScene().name == "GameScene") // Replace with your game scene name
+        if (SceneManager.GetActiveScene().name == "GameScene")
         {
             SetupMultiplayer();
         }
@@ -201,23 +206,23 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         Debug.Log("Left room, returning to lobby...");
 
-        // Clear game data when leaving room
         totalScore = 0;
         collectedItems.Clear();
         UpdateUI();
 
-        // Load lobby scene
-        SceneManager.LoadScene("Lobby"); // Replace with your lobby scene name
+        SceneManager.LoadScene("Lobby");
     }
 
-    // Handle scene changes
-    private void OnEnable()
+    // FIXED: Use public access modifiers for overrides
+    public override void OnEnable()
     {
+        base.OnEnable();
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
 
-    private void OnDisable()
+    public override void OnDisable()
     {
+        base.OnDisable();
         SceneManager.sceneLoaded -= OnSceneLoaded;
     }
 
@@ -225,24 +230,18 @@ public class GameManager : MonoBehaviourPunCallbacks
     {
         Debug.Log($"Scene loaded: {scene.name}");
 
-        // Re-find UI references when new scene loads
         FindUIReferences();
-
-        // Update UI with current data
         UpdateUI();
 
-        // Setup multiplayer if we're in a game scene and in a room
-        if (PhotonNetwork.InRoom && scene.name == "GameScene") // Replace with your game scene name
+        if (PhotonNetwork.InRoom && scene.name == "GameScene")
         {
-            // Small delay to ensure scene is fully loaded
             Invoke(nameof(SetupMultiplayer), 0.1f);
         }
     }
 
     private void FindUIReferences()
     {
-        // Find UI elements in the current scene
-        GameObject scoreObj = GameObject.Find("ScoreText"); // Replace with your UI element names
+        GameObject scoreObj = GameObject.Find("ScoreText");
         GameObject itemsObj = GameObject.Find("ItemsText");
 
         if (scoreObj != null) scoreText = scoreObj.GetComponent<Text>();
@@ -251,21 +250,58 @@ public class GameManager : MonoBehaviourPunCallbacks
         Debug.Log($"UI References - Score: {scoreText != null}, Items: {itemsText != null}");
     }
 
+    public GameObject GetCollectablePrefab(string prefabName)
+    {
+        foreach (GameObject prefab in collectablePrefabs)
+        {
+            if (prefab.name == prefabName)
+            {
+                return prefab;
+            }
+        }
+        Debug.LogWarning($"Collectable prefab not found: {prefabName}");
+        return null;
+    }
+
+    public void SpawnCollectable(string prefabName, Vector3 position)
+    {
+        if (PhotonNetwork.IsMasterClient)
+        {
+            GameObject prefab = GetCollectablePrefab(prefabName);
+            if (prefab != null)
+            {
+                PhotonNetwork.Instantiate(prefab.name, position, Quaternion.identity);
+            }
+        }
+    }
+
     // Debug method for testing
     private void Update()
     {
-        // Press R to respawn (for testing)
         if (Input.GetKeyDown(KeyCode.R) && PhotonNetwork.InRoom)
         {
             Debug.Log("Manual respawn triggered");
             SpawnPlayer();
         }
 
-        // Press T to test score (for testing)
         if (Input.GetKeyDown(KeyCode.T))
         {
             AddScore(10);
-            AddCollectedItem("TestItem");
+            GameObject testItem = new GameObject("TestItem");
+            CollectableItem collectable = testItem.AddComponent<CollectableItem>();
+            collectable.itemName = "TestItem";
+            AddCollectedItem(collectable);
+            Destroy(testItem);
         }
+    }
+
+    public override void OnPlayerEnteredRoom(Photon.Realtime.Player newPlayer)
+    {
+        Debug.Log($"Player joined: {newPlayer.NickName}");
+    }
+
+    public override void OnPlayerLeftRoom(Photon.Realtime.Player otherPlayer)
+    {
+        Debug.Log($"Player left: {otherPlayer.NickName}");
     }
 }

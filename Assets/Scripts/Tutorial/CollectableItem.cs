@@ -1,216 +1,155 @@
 using UnityEngine;
-using System.Collections;
 using Photon.Pun;
+using Photon.Realtime;
 
 public class CollectableItem : MonoBehaviourPunCallbacks
 {
-    [Header("Collectable Settings")]
-    public string itemName = "Trash";
-    public int scoreValue = 10;
-    public float collectRange = 3f;
+    [Header("Item Settings")]
+    public string itemName = "Trash Item";
+    public int itemValue = 1;
 
-    [Header("Visual Feedback")]
-    public Material highlightMaterial;
-    public ParticleSystem collectParticles;
-
-    private Material originalMaterial;
-    private Renderer objectRenderer;
-    private bool isPlayerInRange = false;
-
-    // Private field with public property
     private bool isCollected = false;
     public bool IsCollected => isCollected;
 
+    private Collider itemCollider;
+    private Renderer itemRenderer;
+
+    void Awake()
+    {
+        EnsurePhotonComponents();
+        itemCollider = GetComponent<Collider>();
+        itemRenderer = GetComponent<Renderer>();
+    }
+
+    private void EnsurePhotonComponents()
+    {
+        PhotonView pv = GetComponent<PhotonView>();
+        if (pv == null)
+        {
+            pv = gameObject.AddComponent<PhotonView>();
+            pv.OwnershipTransfer = OwnershipOption.Takeover;
+            pv.Synchronization = ViewSynchronization.UnreliableOnChange;
+        }
+
+        PhotonTransformViewClassic ptv = GetComponent<PhotonTransformViewClassic>();
+        if (ptv == null)
+        {
+            ptv = gameObject.AddComponent<PhotonTransformViewClassic>();
+        }
+
+        if (pv.ObservedComponents == null || pv.ObservedComponents.Count == 0)
+        {
+            pv.ObservedComponents = new System.Collections.Generic.List<Component> { ptv };
+        }
+        else if (!pv.ObservedComponents.Contains(ptv))
+        {
+            pv.ObservedComponents.Add(ptv);
+        }
+    }
+
     void Start()
     {
-        objectRenderer = GetComponent<Renderer>();
-        if (objectRenderer != null)
-        {
-            originalMaterial = objectRenderer.material;
-        }
-
-        // Auto-add a trigger collider if none exists
-        if (GetComponent<Collider>() == null)
-        {
-            SphereCollider collider = gameObject.AddComponent<SphereCollider>();
-            collider.isTrigger = true;
-            collider.radius = collectRange;
-        }
-    }
-
-    void Update()
-    {
-        // Rotate slowly for visual appeal
-        if (!isCollected)
-        {
-            transform.Rotate(0, 30 * Time.deltaTime, 0);
-        }
-    }
-
-    void OnTriggerEnter(Collider other)
-    {
-        if (other.CompareTag("Player") && !isCollected)
-        {
-            // Only allow collection if this is the local player
-            PhotonView photonView = other.GetComponent<PhotonView>();
-            if (photonView != null && !photonView.IsMine)
-                return;
-
-            isPlayerInRange = true;
-            HighlightObject(true);
-
-            // Notify the boat that this item is collectable
-            BoatCollector collector = other.GetComponent<BoatCollector>();
-            if (collector != null)
-            {
-                collector.SetNearbyCollectable(this);
-            }
-        }
-    }
-
-    void OnTriggerExit(Collider other)
-    {
-        if (other.CompareTag("Player"))
-        {
-            // Only handle for local player
-            PhotonView photonView = other.GetComponent<PhotonView>();
-            if (photonView != null && !photonView.IsMine)
-                return;
-
-            isPlayerInRange = false;
-            HighlightObject(false);
-
-            // Notify the boat that no item is nearby
-            BoatCollector collector = other.GetComponent<BoatCollector>();
-            if (collector != null)
-            {
-                collector.ClearNearbyCollectable(this);
-            }
-        }
+        UpdateVisualState();
     }
 
     public void Collect()
     {
-        if (isCollected) return;
+        if (IsCollected) return;
 
-        // In multiplayer, only allow the player who triggered to collect
-        if (PhotonNetwork.IsConnected && !photonView.IsMine)
-            return;
-
-        isCollected = true;
-
-        // Visual effects
-        if (collectParticles != null)
-        {
-            ParticleSystem particles = Instantiate(collectParticles, transform.position, Quaternion.identity);
-            particles.Play();
-            Destroy(particles.gameObject, 2f);
-        }
-
-        // Notify game manager or score system
-        if (GameManager.Instance != null)
-        {
-            GameManager.Instance.AddScore(scoreValue);
-            GameManager.Instance.AddCollectedItem(itemName);
-        }
-
-        // Clear from boat collector before disabling
-        if (isPlayerInRange)
-        {
-            BoatCollector collector = FindObjectOfType<BoatCollector>();
-            if (collector != null)
-            {
-                collector.ClearNearbyCollectable(this);
-            }
-            isPlayerInRange = false;
-        }
-
-        // Remove highlight before disabling
-        HighlightObject(false);
-
-        // Handle object destruction differently in multiplayer
         if (PhotonNetwork.IsConnected)
         {
-            // Use PhotonNetwork.Destroy for networked objects
-            if (photonView != null)
-            {
-                PhotonNetwork.Destroy(gameObject);
-            }
-            else
-            {
-                gameObject.SetActive(false);
-            }
+            // Request ownership then collect
+            photonView.RequestOwnership();
+            photonView.RPC("RPC_CollectItem", RpcTarget.AllBuffered);
         }
         else
         {
-            gameObject.SetActive(false);
+            LocalCollect();
         }
-
-        Debug.Log($"Collected: {itemName} (+{scoreValue} points)");
     }
 
-    private void HighlightObject(bool highlight)
+    [PunRPC]
+    void RPC_CollectItem()
     {
-        if (objectRenderer == null) return;
+        if (IsCollected) return;
 
-        if (highlight)
+        isCollected = true;
+        UpdateVisualState();
+
+        Debug.Log($"{itemName} collected by player");
+
+        // Notify GameManager
+        if (GameManager.Instance != null)
         {
-            // Apply highlight material
-            if (highlightMaterial != null)
-            {
-                objectRenderer.material = highlightMaterial;
-            }
-
-            // Optional: Add additional highlight effects
-            StartPulsatingEffect();
+            GameManager.Instance.AddCollectedItem(this);
+            GameManager.Instance.AddScore(itemValue);
         }
-        else
+
+        // Only master client destroys the object after a delay
+        if (PhotonNetwork.IsMasterClient)
         {
-            // Restore original material
-            if (originalMaterial != null)
-            {
-                objectRenderer.material = originalMaterial;
-            }
-
-            // Stop any highlight effects
-            StopPulsatingEffect();
+            StartCoroutine(DestroyAfterDelay(2f));
         }
     }
 
-    private void StartPulsatingEffect()
+    private System.Collections.IEnumerator DestroyAfterDelay(float delay)
     {
-        // Optional: Add a pulsating scale effect for better visibility
-        StartCoroutine(PulsateEffect());
-    }
-
-    private void StopPulsatingEffect()
-    {
-        // Stop the pulsating effect and reset scale
-        StopAllCoroutines();
-        transform.localScale = Vector3.one;
-    }
-
-    private System.Collections.IEnumerator PulsateEffect()
-    {
-        float pulseSpeed = 2f;
-        float pulseIntensity = 0.2f;
-        Vector3 originalScale = transform.localScale;
-
-        while (isPlayerInRange && !isCollected)
+        yield return new WaitForSeconds(delay);
+        if (photonView != null && PhotonNetwork.IsMasterClient)
         {
-            float pulse = Mathf.Sin(Time.time * pulseSpeed) * pulseIntensity;
-            transform.localScale = originalScale * (1 + pulse);
-            yield return null;
+            PhotonNetwork.Destroy(gameObject);
+        }
+    }
+
+    private void LocalCollect()
+    {
+        isCollected = true;
+        UpdateVisualState();
+
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.AddCollectedItem(this);
+            GameManager.Instance.AddScore(itemValue);
         }
 
-        // Reset scale when done
-        transform.localScale = originalScale;
+        Destroy(gameObject, 0.1f);
     }
 
-    // Visualize the collect range in editor
-    void OnDrawGizmosSelected()
+    private void UpdateVisualState()
     {
-        Gizmos.color = Color.green;
-        Gizmos.DrawWireSphere(transform.position, collectRange);
+        if (itemCollider != null)
+            itemCollider.enabled = !IsCollected;
+        if (itemRenderer != null)
+            itemRenderer.enabled = !IsCollected;
     }
+
+    // Simplified trigger detection - let BoatCollector handle the ownership check
+    private void OnTriggerEnter(Collider other)
+    {
+        if (IsCollected) return;
+
+        BoatCollector boatCollector = other.GetComponent<BoatCollector>();
+        if (boatCollector != null)
+        {
+            boatCollector.SetNearbyCollectable(this);
+        }
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        BoatCollector boatCollector = other.GetComponent<BoatCollector>();
+        if (boatCollector != null)
+        {
+            boatCollector.ClearNearbyCollectable(this);
+        }
+    }
+
+#if UNITY_EDITOR
+    [ContextMenu("Setup Photon Components")]
+    private void SetupPhotonComponents()
+    {
+        EnsurePhotonComponents();
+        UnityEditor.EditorUtility.SetDirty(this);
+    }
+#endif
 }
